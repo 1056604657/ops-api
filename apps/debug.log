@@ -1,0 +1,6 @@
+DEBUG 2024-10-14 17:46:20,183 selector_events 6957 8397337152 Using selector: KqueueSelector
+DEBUG 2024-10-30 14:19:27,181 selector_events 64704 8397337152 Using selector: KqueueSelector
+DEBUG 2024-10-30 14:20:30,298 selector_events 65018 8397337152 Using selector: KqueueSelector
+DEBUG 2024-11-15 14:09:12,281 selector_events 27794 8624994368 Using selector: KqueueSelector
+DEBUG 2024-11-29 19:56:01,021 selector_events 17304 8624994368 Using selector: KqueueSelector
+DEBUG 2024-11-29 19:56:01,113 selector_events 17304 8624994368 Using selector: KqueueSelector

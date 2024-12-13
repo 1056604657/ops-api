@@ -1,0 +1,71 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'BRANCH_NAME', defaultValue: 'main', description: '选择要构建的分支')
+    }
+
+    stages {
+        stage('拉取代码') {
+            steps {
+                script {
+                    // 使用指定凭据拉取代码
+                    checkout([$class: 'GitSCM', 
+                        branches: [[name: "${params.BRANCH_NAME}"]],
+                        userRemoteConfigs: [[url: 'https://your-repo-url.git', credentialsId: 'xxx']]
+                    ])
+                }
+            }
+        }
+
+        stage('清理工作区') {
+            steps {
+                cleanWs() // 删除工作区
+            }
+        }
+
+        stage('构建') {
+            steps {
+                script {
+                    // 使用mvn构建，指定pom.xml和构建参数
+                    sh 'mvn -f path/to/pom.xml clean install -DskipTests=true'
+                }
+            }
+        }
+
+        stage('执行构建脚本') {
+            steps {
+                script {
+                    // 执行构建脚本
+                    sh '''#repo=hub.aijidou.com
+tag=$(echo $Branch | awk -F '/' '{print $2}')_$(date +%Y%m%d_%H%M)
+#构建镜像
+cp /mnt/shell/docker/build_image_hub-sh.sh  oneinfo_content_provider/target/*.jar LAST_COMMIT.log  kustomize-k8s/jdocloud/jdocloud_content-provider/
+cd kustomize-k8s/jdocloud/jdocloud_content-provider/
+
+./build_image_hub-sh.sh jdocloud content-provider $tag
+
+cd overlays/dev
+kustomize edit set image hub-sh.aijidou.com/jdocloud/content-provider=hub-sh.aijidou.com/jdocloud/content-provider:${tag}
+#初次部署镜像请去掉该部分注释
+kustomize build . 
+kustomize build . | kubectl --kubeconfig=/root/.kube_jdo_dev_new/config apply -f -
+
+
+#kubectl --kubeconfig=/root/.kube_jdo_test_new/config -n v2x rollout status deploy v2x-open-api
+'''
+                }
+            }
+        }
+
+        stage('发送构建通知') {
+            steps {
+                script {
+                    // 发送构建通知的逻辑
+                    echo '构建完成，发送通知...'
+                    // 这里可以添加发送通知的代码
+                }
+            }
+        }
+    }
+}

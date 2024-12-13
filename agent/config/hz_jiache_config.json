@@ -1,0 +1,33 @@
+{
+    "hz_jiache": {
+        "ak": "GB4KIDXQJ1SSWKIPX7MJ",
+        "sk": "cq8kJOIJrlDDyMnUJy2f9Cck0PoEskaBjqhh0gH2",
+        "regions": {
+            "cn-north-4": "华北-北京四",
+            "cn-east-2": "华东-上海二",
+            "cn-south-1": "华南-广州",
+            "ap-southeast-3": "亚太-新加坡",
+            "ap-southeast-1": "中国-香港",
+            "cn-east-3": "华东-上海一"
+        }
+    },
+    "jdo_hcp3": {
+        "ak": "RE15XQAJDRZTLVYF4XZV",
+        "sk": "1xhmXQteEx8X3WtlZavHjRtCUBMQRwWrN6eIvifi",
+        "regions": {
+            "cn-north-4": "华北-北京四",
+            "cn-east-2": "华东-上海二",
+            "cn-east-3": "华东-上海一",
+            "cn-south-1": "华南-广州",
+            "ap-southeast-1": "中国-香港",
+            "cn-north-1": "华北-北京一"
+        }
+    },
+    "jdo_asterix": {
+        "ak": "YDQAQOOB9QNTYWMDLQVN",
+        "sk": "FKiQLWZTSjLYLlBhTbLURO2H7WlesB4sNDLGJpQv",
+        "regions": {
+            "cn-north-1": "华北-北京一"
+        }
+    }   
+}

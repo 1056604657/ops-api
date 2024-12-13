@@ -1,0 +1,190 @@
+pipeline {
+    agent any
+    tools {
+        maven 'apache-maven-3.5.4'
+        jdk   'jdk8'
+    }
+    parameters {
+        gitParameter name: 'Branch', 
+                     type: 'PT_BRANCH',
+                     branchFilter: 'origin/(.*)',
+                     defaultValue: 'master',
+                     selectedValue: 'DEFAULT',
+                     sortMode: 'DESCENDING_SMART',
+                     description: 'Select your branch or tag.'
+    }
+    stages {
+        stage('Clean1') {
+            steps {
+                cleanWs(
+                    cleanWhenAborted: true, 
+                    cleanWhenFailure: true, 
+                    cleanWhenNotBuilt: true, 
+                    cleanWhenSuccess: true, 
+                    cleanWhenUnstable: true, 
+                    cleanupMatrixParent: true, 
+                    disableDeferredWipeout: true,
+                    deleteDirs: true
+                )
+            }
+        }
+        stage('git-pull') {
+            steps {
+                git branch: '$Branch', credentialsId: 'c803b1af-d23c-4c07-b81e-2469a3164abb', url: 'git@test-service.git'
+            }
+        }
+        stage('build') {
+            steps {
+                sh 'mvn -f .//pom.xml clean install -DskipTests=true'
+            }
+        }
+        stage('deploy') {
+            steps {
+                sh '''
+                    tag=$(echo $Branch | awk -F '/' '{print $2}')_$(date +%Y%m%d_%H%M)
+                    cp /mnt/shell/docker/push_allinone.sh ./target/*.jar .
+                    
+                    cat > Dockerfile << 'EOF'
+FROM hub-sh.aijidou.com/base/openjdk:8-jdk-slim-stretch
+RUN mkdir /usr/local/app -p &&\
+    mkdir /data
+COPY *.jar /usr/local/app/app.jar
+COPY LAST_COMMIT.log /usr/local/app
+WORKDIR /usr/local/app
+EXPOSE 8080
+CMD ["java", "-jar", "app.jar"]
+EOF
+
+                    ./push_allinone.sh jdocloud-dev jdo-dev/git@test-service.git test-service2 $tag
+                    
+                    cat > test-service2.yaml << 'EOL'
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-service2
+  namespace: git@test-service.git
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: test-service2
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: test-service2
+  name: test-service2
+  namespace: git@test-service.git
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-service2
+  template:
+    metadata:
+      annotations:
+        co.elastic.logs/enabled: "true"
+        co.elastic.logs/topic: test-service2-log
+      labels:
+        app: test-service2
+    spec:
+      containers:
+      - args:
+        - -Dlog4j2.formatMsgNoLookups=true
+        - -Dfile.encoding=UTF-8
+        - -Xms512M
+        - -Xmx4000M
+        - -server
+        - -XX:+UseAdaptiveSizePolicy
+        - -XX:ParallelGCThreads=1
+        - -Dspring.profiles.active=$(profiles)
+        - -javaagent:/usr/skywalking/agent/skywalking-agent.jar
+        - -Dskywalking.agent.service_name=git@test-service.git::test-service2
+        - -jar
+        - app.jar
+        command:
+        - java
+        env:
+        - name: profiles
+          value: dev
+        image: swr.cn-east-2.myhuaweicloud.com/jdo-dev/git@test-service.git/test-service2:latest
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ok
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 110
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: test-service2
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ok
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 35
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: "2"
+            memory: 4Gi
+          requests:
+            cpu: 200m
+            memory: 512Mi
+        volumeMounts:
+        - mountPath: /usr/skywalking/agent
+          name: sw-agent
+        - mountPath: /etc/localtime
+          name: tz-config
+      imagePullSecrets:
+      - name: default-secret
+      initContainers:
+      - args:
+        - -c
+        - mkdir -p /skywalking/agent && cp -r /usr/skywalking/agent/* /skywalking/agent
+        command:
+        - sh
+        image: hub-sh.aijidou.com/library/sw-agent-sidecar:8.9.0_ex_xjob_20220429
+        imagePullPolicy: IfNotPresent
+        name: sw-agent-sidecar
+        volumeMounts:
+        - mountPath: /skywalking/agent
+          name: sw-agent
+      restartPolicy: Always
+      volumes:
+      - emptyDir: {}
+        name: sw-agent
+      - hostPath:
+          path: /etc/localtime
+          type: ""
+        name: tz-config
+
+EOL
+
+                    sed -i "s|:latest|:$tag|g" test-service2.yaml
+                    kubectl --kubeconfig=/root/.kube_jdo_dev_new/config apply -f test-service2.yaml
+                '''
+            }
+        }
+        stage('健康检查') {
+            steps {
+                script {
+                    sleep(30)
+                    sh "curl -f /ok"
+                }
+            }
+        }
+    }
+}

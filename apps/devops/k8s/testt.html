@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>K8s Pod 终端测试</title>
+    <style>
+        #terminal {
+            width: 800px;
+            height: 400px;
+            background: black;
+            color: #fff;
+            font-family: monospace;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        #input {
+            width: 780px;
+            margin-top: 10px;
+            padding: 5px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal"></div>
+    <input type="text" id="input" placeholder="输入命令..." />
+
+    <script>
+        const terminal = document.getElementById('terminal');
+        const input = document.getElementById('input');
+        
+        // 配置WebSocket连接参数
+        const namespace = 'default';  // 替换为实际的namespace
+        const podName = 'mysql-rgb6t';   // 替换为实际的pod名称
+        const container = 'mysql';     // 替换为实际的容器名
+        const context = 'test';   // 替换为实际的k8s context
+        
+        // 建立WebSocket连接
+        const ws = new WebSocket(
+            `ws://localhost:8000/ws/terminal/${namespace}/${podName}/?container=${container}&context=${context}`
+        );
+
+        // 连接建立时的处理
+        ws.onopen = () => {
+            appendToTerminal('终端连接已建立\n');
+        };
+
+        // 接收消息的处理
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            if (data.output) {
+                appendToTerminal(data.output);
+            }
+            
+            if (data.error) {
+                appendToTerminal(`错误: ${data.error}\n`, 'red');
+            }
+        };
+
+        // 连接关闭时的处理
+        ws.onclose = () => {
+            appendToTerminal('终端连接已关闭\n', 'yellow');
+        };
+
+        // 处理输入命令
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const command = input.value;
+                ws.send(JSON.stringify({
+                    input: command + '\n'
+                }));
+                input.value = '';
+            }
+        });
+
+        // 向终端添加文本的辅助函数
+        function appendToTerminal(text, color = 'white') {
+            const span = document.createElement('span');
+            span.style.color = color;
+            span.textContent = text;
+            terminal.appendChild(span);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    </script>
+</body>
+</html>

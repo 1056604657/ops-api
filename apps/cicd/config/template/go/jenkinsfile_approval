@@ -1,0 +1,68 @@
+pipeline {
+    agent any
+    parameters {
+        gitParameter name: 'Branch', 
+                     type: 'PT_BRANCH',
+                     branchFilter: 'origin/(.*)',
+                     defaultValue: 'master',
+                     selectedValue: 'DEFAULT',
+                     sortMode: 'DESCENDING_SMART',
+                     description: 'Select your branch or tag.'
+        string(name: 'GOPROXY', 
+               defaultValue: 'https://goproxy.cn,direct', 
+               description: 'Go proxy address for downloading dependencies')
+    }
+    stages {
+        stage('Clean1') {
+            steps {
+                cleanWs(
+                    cleanWhenAborted: true, 
+                    cleanWhenFailure: true, 
+                    cleanWhenNotBuilt: true, 
+                    cleanWhenSuccess: true, 
+                    cleanWhenUnstable: true, 
+                    cleanupMatrixParent: true, 
+                    disableDeferredWipeout: true,
+                    deleteDirs: true
+                )
+            }
+        }
+        stage('git-pull') {
+            steps {
+                git branch: '$Branch', credentialsId: '##credentialsId##', url: '##gitUrl##'
+            }
+        }
+        stage('build') {
+            steps {
+                sh '''
+                    export GOPROXY=${GOPROXY}
+                    cd ##projectDir##
+                    go mod tidy
+                    go build main.go
+                    mv main ../
+                '''
+            }
+        }
+        stage('deploy') {
+            steps {
+                sh '''
+                    tag=$(echo $Branch | awk -F '/' '{print $2}')_$(date +%Y%m%d_%H%M)
+                    cp /mnt/shell/docker/push_allinone.sh .
+                    ./push_allinone.sh ##cluster## ##namespace## ##serviceName## $tag
+                    
+                    ssh -i /root/.ssh/id_rsa_jdo ##jumpServer## -C 'rm -rf /mnt/shell/yaml/*'
+                    scp -i /root/.ssh/id_rsa_jdo ##serviceName##.yaml ##jumpServer##:/mnt/shell/yaml/
+                    ssh -i /root/.ssh/id_rsa_jdo ##jumpServer## -C 'kubectl --kubeconfig=##kubeConfig## apply -f /mnt/shell/yaml/##serviceName##.yaml'
+                '''
+            }
+        }
+        stage('健康检查') {
+            steps {
+                script {
+                    sleep(30)
+                    sh "curl -f ##okApiPath##"
+                }
+            }
+        }
+    }
+}

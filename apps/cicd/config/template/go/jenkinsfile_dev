@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+    tools {
+        maven 'apache-maven-3.5.4'
+        jdk   '##jdkVersion##'
+    }
+    parameters {
+        gitParameter name: 'Branch', 
+                     type: 'PT_BRANCH',
+                     branchFilter: 'origin/(.*)',
+                     defaultValue: 'master',
+                     selectedValue: 'DEFAULT',
+                     sortMode: 'DESCENDING_SMART',
+                     description: 'Select your branch or tag.'
+    }
+    stages {
+        stage('Clean1') {
+            steps {
+                cleanWs(
+                    cleanWhenAborted: true, 
+                    cleanWhenFailure: true, 
+                    cleanWhenNotBuilt: true, 
+                    cleanWhenSuccess: true, 
+                    cleanWhenUnstable: true, 
+                    cleanupMatrixParent: true, 
+                    disableDeferredWipeout: true,
+                    deleteDirs: true
+                )
+            }
+        }
+        stage('git-pull') {
+            steps {
+                git branch: '$Branch', credentialsId: '##credentialsId##', url: '##gitUrl##'
+            }
+        }
+        stage('build') {
+            steps {
+                sh 'mvn -f ##pomDir##/pom.xml clean install -DskipTests=true'
+            }
+        }
+        stage('deploy') {
+            steps {
+                sh '''
+                    tag=$(echo $Branch | awk -F '/' '{print $2}')_$(date +%Y%m%d_%H%M)
+                    cp /mnt/shell/docker/push_allinone.sh ##pomDir##target/*.jar .
+                    ./push_allinone.sh ##cluster## ##namespace## ##serviceName## $tag
+                    kubectl --kubeconfig=##kubeConfig## apply -f ##serviceName##.yaml
+                '''
+            }
+        }
+        stage('健康检查') {
+            steps {
+                script {
+                    sleep(30)
+                    sh "curl -f ##okApiPath##"
+                }
+            }
+        }
+    }
+}

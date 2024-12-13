@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-service2
+  namespace: git@test-service.git
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: test-service2
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: test-service2
+  name: test-service2
+  namespace: git@test-service.git
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-service2
+  template:
+    metadata:
+      annotations:
+        co.elastic.logs/enabled: "true"
+        co.elastic.logs/topic: test-service2-log
+      labels:
+        app: test-service2
+    spec:
+      containers:
+      - args:
+        - -Dlog4j2.formatMsgNoLookups=true
+        - -Dfile.encoding=UTF-8
+        - -Xms512M
+        - -Xmx4000M
+        - -server
+        - -XX:+UseAdaptiveSizePolicy
+        - -XX:ParallelGCThreads=1
+        - -Dspring.profiles.active=$(profiles)
+        - -javaagent:/usr/skywalking/agent/skywalking-agent.jar
+        - -Dskywalking.agent.service_name=git@test-service.git::test-service2
+        - -jar
+        - app.jar
+        command:
+        - java
+        env:
+        - name: profiles
+          value: dev
+        image: swr.cn-east-2.myhuaweicloud.com/jdo-dev/git@test-service.git/test-service2:latest
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ok
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 110
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: test-service2
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ok
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 35
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: "2"
+            memory: 4Gi
+          requests:
+            cpu: 200m
+            memory: 512Mi
+        volumeMounts:
+        - mountPath: /usr/skywalking/agent
+          name: sw-agent
+        - mountPath: /etc/localtime
+          name: tz-config
+      imagePullSecrets:
+      - name: default-secret
+      initContainers:
+      - args:
+        - -c
+        - mkdir -p /skywalking/agent && cp -r /usr/skywalking/agent/* /skywalking/agent
+        command:
+        - sh
+        image: hub-sh.aijidou.com/library/sw-agent-sidecar:8.9.0_ex_xjob_20220429
+        imagePullPolicy: IfNotPresent
+        name: sw-agent-sidecar
+        volumeMounts:
+        - mountPath: /skywalking/agent
+          name: sw-agent
+      restartPolicy: Always
+      volumes:
+      - emptyDir: {}
+        name: sw-agent
+      - hostPath:
+          path: /etc/localtime
+          type: ""
+        name: tz-config
